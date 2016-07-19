@@ -30,7 +30,7 @@
 (def lastnodeID 2)
 
 (defn get-node [owner idx]
-  (.log js/console "i am being called")
+  ;(.log js/console "i am being called")
   (aget (:nodes (om/get-state owner)) idx))
 
 (defn svg-component [app owner]
@@ -110,9 +110,9 @@
                                                          sourceY (+ (.. d -source -y) (* sourcePadding normY))
                                                          targetX (- (.. d -target -x) (* targetPadding normX))
                                                          targetY (- (.. d -target -y) (* targetPadding normY))]
-                                                     ;; (.log js/console (str "d: " (.. d -source)
-                                                     ;;                       "\nnodes: " (aget (aget (om/get-state owner :nodes) 0) "x")
-                                                     ;;                       "\nlinks: " (aget (aget (aget (om/get-state owner :links) 0) "source") "x")))
+                                                     (.log js/console (str "d: " (.. d -source)
+                                                                           "\nnodes: " (aget (aget (om/get-state owner :nodes) 0) "x")
+                                                                           "\nlinks: " (aget (aget (aget (om/get-state owner :links) 0) "source") "x")))
                                                      ;; (println (str  "bad: " 
                                                      ;;                (gstring/format "%.2f" (.. d -source -x)) 
                                                      ;;                " test: " 
