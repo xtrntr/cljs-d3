@@ -30,7 +30,6 @@
 (def lastnodeID 2)
 
 (defn get-node [owner idx]
-  ;(.log js/console "i am being called")
   (aget (:nodes (om/get-state owner)) idx))
 
 (defn svg-component [app owner]
@@ -87,11 +86,11 @@
                   (this-as this 
                            (let [point (.mouse js/d3 this)
                                  x (aget point 0)
-                                 y (aget point 1)]
-                             (set! lastnodeID (inc lastnodeID))
-                             (om/set-state! owner :nodes 
-                                            (clj->js (conj (js->clj (om/get-state owner :nodes)) {:id lastnodeID
-                                                                                                  :x x :y y}))))))))
+                                 y (aget point 1)
+                                 nodes (om/get-state owner :nodes)]
+                             (set! lastnodeID (inc lastnodeID)) 
+                             (.push nodes (clj->js {:id lastnodeID
+                                                    :x x :y y})))))))
         (.on force-layout "tick" (fn []
                                    (.. (get @app :circle)
                                        (attr "transform" #(str "translate(" (.. % -x) "," (.. % -y) ")")))
@@ -110,14 +109,6 @@
                                                          sourceY (+ (.. d -source -y) (* sourcePadding normY))
                                                          targetX (- (.. d -target -x) (* targetPadding normX))
                                                          targetY (- (.. d -target -y) (* targetPadding normY))]
-                                                     (.log js/console (str "d: " (.. d -source)
-                                                                           "\nnodes: " (aget (aget (om/get-state owner :nodes) 0) "x")
-                                                                           "\nlinks: " (aget (aget (aget (om/get-state owner :links) 0) "source") "x")))
-                                                     ;; (println (str  "bad: " 
-                                                     ;;                (gstring/format "%.2f" (.. d -source -x)) 
-                                                     ;;                " test: " 
-                                                     ;;                (gstring/format "%.2f" (aget (aget (om/get-state owner :nodes) 0) "x"))))
-                                        ;(println (.. d -source))
                                                      (str "M " sourceX "," sourceY " L " targetX "," targetY)))))))
         (om/update! app [:path] path)
         (om/update! app [:circle] circle)
@@ -138,16 +129,8 @@
             path (.. (get @app :path) (data links))
             circle (.. (get @app :circle) (data nodes (fn [d] (.-id d))))
             force-layout (get @app :force-layout)]
-                                        ;(.. svg (selectAll ".node") remove)
-                                        ;(.. svg (selectAll ".path") remove)
-                                        ;(println (str "wrongy " (js->clj (.. (get @app :path) (data links)))))
-                                        ;(println (str "righty " (js->clj links)))
-                                        ;(println links)
         (om/update! app [:path] path)
         (om/update! app [:circle] circle)
-        ;; rebuild links
-        (om/set-state! owner :links (clj->js [{:source (get-node owner 0) :target (get-node owner 1) :left false :right true}
-                                              {:source (get-node owner 1) :target (get-node owner 2) :left false :right true}]))
         
         (.. path
             (style "marker-start" (fn [d] (if (.-left d) "url(#start-arrow)" "")))
@@ -171,8 +154,7 @@
               (attr (clj->js {:x 0 :y 4
                               :class "id"})) 
               (text (fn [d] (.-id d)))))
-                                        ;(println (str "true: " (aget (aget nodes 0) "x")))
-        ;(.. circle exit remove)
+        (.. circle exit remove)
         (.. force-layout
             (nodes nodes)
             (links links)
