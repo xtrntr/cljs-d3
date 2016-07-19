@@ -145,6 +145,9 @@
                                         ;(println links)
         (om/update! app [:path] path)
         (om/update! app [:circle] circle)
+        ;; rebuild links
+        (om/set-state! owner :links (clj->js [{:source (get-node owner 0) :target (get-node owner 1) :left false :right true}
+                                              {:source (get-node owner 1) :target (get-node owner 2) :left false :right true}]))
         
         (.. path
             (style "marker-start" (fn [d] (if (.-left d) "url(#start-arrow)" "")))
