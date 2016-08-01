@@ -9,6 +9,8 @@
   (:require-macros
    [cljs.core.async.macros :as m :refer [go]]))
 
+;; single line chart and getting data via ajax calls
+
 (def data-url "https://data.gov.sg/api/action/datastore_search?resource_id=9326ca53-9153-4a9c-b93f-8ae032637b70")
 (def once true)
 
@@ -130,74 +132,43 @@
                         (list (om/get-state owner :raw)
                               (last (om/get-state owner :raw))
                               (last (last (om/get-state owner :raw)))
-                              (get (last (last (om/get-state owner :raw))) "records"))))))
-      (let [date-format (.. js/d3.time
-                            (format "%d-%b-%y"))
-            data (.. js/d3
-                     (range 40)
-                     (map #(if (mod % 5)
-                             {:x (/ % 39)
-                              :y (/ (+ 2 (.sin js/Math (/ % 3))) 4)}
-                             nil)))
-            margin (clj->js {:top 20 :right 20
-                             :left 30 :bottom 50})
-            width 890
-            height 450
-            x (.. js/d3.time
-                  scale
-                  (range (clj->js [0 width])))
-            y (.. js/d3.scale
-                  linear
-                  (range (clj->js [height 0])))
-            x-axis (.. js/d3.svg
-                       axis
-                       (scale x)
-                       (orient "bottom"))
-            y-axis (.. js/d3.svg
-                       axis
-                       (scale y)
-                       (orient "left"))
-            line (.. js/d3.svg
-                     line 
-                     (x (fn [d] (x (.-date d))))
-                     (y (fn [d] (y (.-close d)))))
-            svg (.. js/d3
-                    (select ".svg")
-                    (append "svg")
-                    (attr (clj->js {:width (+ width 50)
-                                    :height (+ height 70)}))
-                    (append "g") 
-                    (attr (clj->js {:transform (str "translate(" 30 "," 20 ")")})))]
-        (.. js/d3
-            (tsv (om/get-state owner :records)  
-                 (fn [d] 
-                   (set! (.-date d) (.. date-format (parse (.-date d))))
-                   (set! (.-close d) (gstring/toNumber (.-close d))) ;d.close = +d.close
-                   d)
-                 (fn [err data]
-                   ;;(when err (throw (js/Error err)))
-                   ;; x.domain(d3.extent(data, function(d) { return d.date; })); 
-                   ;; y.domain(d3.extent(data, function(d) { return d.close; }));
-                   (.. x (domain (.. js/d3 (extent data (fn [d] (.-date d))))))
-                   (.. y (domain (.. js/d3 (extent data (fn [d] (.-close d))))))
-                   (.. svg
-                       (append "g")
-                       (attr (clj->js {:class "x axis"
-                                       :transform (str "translate(0," height ")")}))
-                       (call x-axis))
-                   (.. svg
-                       (append "g")
-                       (attr (clj->js {:class "y axis"}))
-                       (call y-axis)
-                       (append "text")
-                       (attr (clj->js {:transform "rotate(-90)"
-                                       :y 6
-                                       :dy ".71em"}))
-                       (style "text-anchor" "end")
-                       (text "Price (%)"))
-                   (.. svg
-                       (append "path")
-                       (datum data)
-                       (attr (clj->js {:class "line"}))
-                       (attr "d" line))
-                   )))))))
+                              (get (last (last (om/get-state owner :raw))) "records"))))
+          ))
+      ;; (let [date-format (.. js/d3.time
+      ;;                       (format "%d-%b-%y"))
+      ;;       data (.. js/d3
+      ;;                (range 40)
+      ;;                (map #(if (mod % 5)
+      ;;                        {:x (/ % 39)
+      ;;                         :y (/ (+ 2 (.sin js/Math (/ % 3))) 4)}
+      ;;                        nil)))
+      ;;       margin (clj->js {:top 20 :right 20
+      ;;                        :left 30 :bottom 50})
+      ;;       width 890
+      ;;       height 450
+      ;;       x (.. js/d3.time
+      ;;             scale
+      ;;             (range (clj->js [0 width])))
+      ;;       y (.. js/d3.scale
+      ;;             linear
+      ;;             (range (clj->js [height 0])))
+      ;;       x-axis (.. js/d3.svg
+      ;;                  axis
+      ;;                  (scale x)
+      ;;                  (orient "bottom"))
+      ;;       y-axis (.. js/d3.svg
+      ;;                  axis
+      ;;                  (scale y)
+      ;;                  (orient "left"))
+      ;;       line (.. js/d3.svg
+      ;;                line 
+      ;;                (x (fn [d] (x (.-date d))))
+      ;;                (y (fn [d] (y (.-close d)))))
+      ;;       svg (.. js/d3
+      ;;               (select ".svg")
+      ;;               (append "svg")
+      ;;               (attr (clj->js {:width (+ width 50)
+      ;;                               :height (+ height 70)}))
+      ;;               (append "g") 
+      ;;               (attr (clj->js {:transform (str "translate(" 30 "," 20 ")")})))])
+      )))

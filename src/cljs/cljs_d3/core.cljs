@@ -7,15 +7,19 @@
             [goog.string :as gstring]
             [goog.string.format]
             [cljs-d3.chart :as chart]
-            [cljs-d3.force :as force])
+            [cljs-d3.force :as force]
+            [cljs-d3.gametree :as gametree]
+            [cljs-d3.multiline_chart :as multiline])
   (:require-macros
    [cljs.core.async.macros :as m :refer [go]]))
 
 (defn screen [app owner]
   (om/component
    (dom/div nil
-            (om/build chart/chart app)
+            ;(om/build multiline/multiline-chart app)
+            ;(om/build chart/chart app)
             ;(om/build force/force-chart app)
+            (om/build gametree/tree-viz app)
             )))
 
 (def app-state (atom {:svg nil
@@ -27,3 +31,4 @@
  screen
  app-state 
  {:target (js/document.getElementById "app")})
+ 
