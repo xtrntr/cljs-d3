@@ -14,6 +14,7 @@
                  [ring.middleware.logger "0.5.0"]
                  [compojure "1.5.0"]
                  [environ "1.0.3"]
+                 [doo "0.1.6-SNAPSHOT"]
                  
                  [cljs-http "0.1.41"]
                  [org.omcljs/om "1.0.0-alpha36"]

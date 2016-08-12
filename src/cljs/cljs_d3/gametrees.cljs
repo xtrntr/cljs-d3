@@ -5,7 +5,9 @@
             [clojure.string :as str]
             [cljsjs.d3]
             [goog.string :as gstring]
-            [goog.string.format])
+            [goog.string.format]
+            [cljs-d3.gamelogic :as logic]
+            [clojure.data :as data])
   (:require-macros
    [cljs.core.async.macros :as m :refer [go go-loop]]))
 
@@ -44,25 +46,98 @@
         black "#776e65"]
     (if (> val 4) white black)))
 
-(def nodes (clj->js []))                    
+(def max-depth 4)
+(def visited-nodes (clj->js []))
+(def prev-node (clj->js {:parent "null"
+                            :grid 
+                            [0 2 4 512
+                             2 4 8 256
+                             4 2 16 128
+                             2 4 32 64]
+                            }))
+(def scores (clj->js []))
+(def best-grid (clj->js {:score 0}))
+(def node-counter 0)
 
-(def next-nodes (clj->js [{:grid [0 2 4 512
-                                  2 4 8 256
-                                  4 2 16 128
-                                  2 4 32 64]}
-                          {:grid [2 2 4 512
-                                  4 4 8 256
-                                  2 2 16 128
-                                  0 4 32 64]}
-                          {:grid [2 4 512 0
-                                  2 4 8 256
-                                  4 2 16 128
-                                  2 4 32 64]}
-                          {:parent "null"
-                           :grid [0 2 4 512
-                                  2 4 8 256
-                                  4 2 16 128
-                                  2 4 32 64]}]))
+;; push next-node into the array of all nodes.
+(defn depth-first-search [owner]
+  (let [curr-depth (om/get-state owner :depth)]
+    (cond (zero? curr-depth) (do (.push visited-nodes prev-node)
+                                 (om/set-state! owner :depth (inc curr-depth)))
+          :else (let [visited-grids (js->clj (.map visited-nodes (fn [n] (.-grid n))))
+                      possible-children (if (odd? curr-depth) 
+                                          (logic/generate-moves (js->clj (.-grid prev-node)))
+                                          (logic/generate-spawns (js->clj (.-grid prev-node))))
+                      valid-children (for [children possible-children
+                                           :when (not (some #{children} visited-grids))]
+                                       children)
+                      has-children? (not (empty? valid-children))
+                      going-down? (and has-children? (not (= curr-depth max-depth)))
+                      probability (if (odd? curr-depth) 
+                                    1
+                                    (let [new-spawn (first (filter integer? (first (data/diff (first valid-children)
+                                                                                              (js->clj (.-grid prev-node))))))]
+                                      (if (= new-spawn 2)
+                                        0.9
+                                        0.1)))
+                      next-node (if (even? curr-depth)
+                                  (clj->js {:grid (first valid-children)
+                                            :probability probability})
+                                  (clj->js {:grid (first valid-children)}))]
+                  
+                  ;; we go up when there is no more children.
+                  (if going-down?
+                    (om/set-state! owner :depth (inc curr-depth))
+                    (if (not has-children?)
+                      (om/set-state! owner :depth (dec curr-depth))))
+                  (if going-down? 
+                    (do (when prev-node
+                          (if (.. prev-node -children)  
+                            (.. prev-node -children (push next-node))
+                            (set! (.-children prev-node) (clj->js [next-node]))))
+                        (.push visited-nodes next-node)
+                        (set! prev-node next-node))
+                    (if has-children? 
+                      (do (when prev-node
+                            (if (.. prev-node -children)  
+                              (.. prev-node -children (push next-node))
+                              (set! (.-children prev-node) (clj->js [next-node]))))
+                          
+                          (.push visited-nodes next-node))
+                      (let [children-num (.. prev-node -children -length)
+                            score (if (even? curr-depth)
+                                    (/ (reduce + (for [x (range children-num)] 
+                                                                (let [obj (.pop visited-nodes)
+                                                                      grid (.-grid obj)
+                                                                      prob (.-probability obj)]
+                                                                  ;; (om/set-state! owner :id (dec (om/get-state owner :id)))
+                                                                  (* prob (logic/score-grid grid))))) children-num)
+                                    (apply max (for [x (range children-num)] 
+                                                 (let [obj (.pop visited-nodes)
+                                                       grid (.-grid obj)
+                                                       score (.-score obj)]
+                                                   (when (> score (.-score best-grid))
+                                                     (set! best-grid obj))
+                                                   score))))]
+                        
+                        
+                        (set! (.. prev-node -score) score)
+                        (set! (.. prev-node -children -length) 0)
+                        ;; (.pop visited-nodes)
+                        ;; (.push visited-nodes prev-node)
+                        (if (not (= (.-parent prev-node) "null"))
+                          (set! prev-node (.-parent prev-node))
+                          (do ;; (set! (.. prev-node -score) "null")
+                              ;; (set! (.. prev-node -grid) (.-grid best-grid))
+                              (set! (.-length visited-nodes) 0)
+                              (set! prev-node (clj->js {:parent "null"
+                                                        :grid (.-grid best-grid)}))
+                              (.push visited-nodes prev-node)
+                              (.log js/console "r u ")
+                              ;; (.log js/console curr-depth)
+                              ;; (.log js/console (.-length visited-nodes))
+                              ;; (js/clearInterval (om/get-state owner :timer))
+                              )))))))))
 
 (defn tree-viz [app owner]
   (reify
@@ -73,12 +148,12 @@
                          :bottom 50
                          :left 50})
        :width 1020
-       :height 720
+       :height 820
        :board-size 100
        :cell-size 25
        :tree (.. js/d3.layout
                  tree
-                 (size (clj->js [800 500])))
+                 (size (clj->js [800 600])))
        :diagonal (.. js/d3.svg
                      diagonal
                      (projection (fn [d] (clj->js [(.-x d) (.-y d)]))))
@@ -87,11 +162,15 @@
        :finished false
        :id 0
        :timer nil
-       :timeout 750})
-    
+       :timeout 10000
+       :depth 0
+       :svg nil})
+
     om/IDidMount
     (did-mount [_]      
-      (let [timeout (om/get-state owner :timeout)]
+      (let [timeout (om/get-state owner :timeout)
+            tree (om/get-state owner :tree)]
+        (.. tree (separation (fn [a b] 2)))
         (om/set-state! owner :svg (.. js/d3
                                       (select ".svg")
                                       (append "svg")
@@ -99,109 +178,158 @@
                                                       :height (om/get-state owner :height)}))
                                       (append "g")
                                       (attr (clj->js {:transform (str "translate(" 110 "," 110 ")")}))))
+      
         (om/set-state! owner :timer 
                        (js/setInterval (fn [] 
-                                         (let [tree (om/get-state owner :tree)
-                                               next-node (.pop next-nodes)
-                                               root (aget nodes 0)]
-                                           (when root
-                                             (if (.. root -children)  
-                                               (.. root -children (push next-node))
-                                               (set! (.-children root) (clj->js [next-node]))))
-                                           (.push nodes next-node)
-                                           (when (not next-node)
-                                             (js/clearInterval (om/get-state owner :timer))
-                                             (om/update! owner :finished true))
-                                           (let [svg (om/get-state owner :svg)
-                                                 board-size (om/get-state owner :board-size)
-                                                 cell-size (om/get-state owner :cell-size)
-                                                 width (om/get-state owner :width)
-                                                 grid-color (om/get-state owner :grid-color)
-                                                 root (aget nodes 0)
-                                                 node (.. svg 
-                                                          (selectAll "g.node-group")
-                                                          (data (.. tree (nodes root)) (fn [d]
-                                                                                         (let [curr-id (om/get-state owner :id)]
-                                                                                           (if (.-id d)
-                                                                                             (.-id d) 
-                                                                                             (do (set! (.-id d) curr-id)
-                                                                                                 (om/set-state! owner :id (inc curr-id))
-                                                                                                 (.-id d)))))))
-                                                 node-group (.. node
-                                                                enter
-                                                                (append "g")
-                                                                (attr (clj->js {:class "node-group"
-                                                                                :fill (str (om/get-state owner :id))
-                                                                                :transform (fn [d] 
-                                                                                             (if (= "null" (.-parent d))
-                                                                                               (str "translate(" (- (/ width 2) (/ board-size 2)) "," (- 0 (/ board-size 2)) ")")
-                                                                                               (str "translate(" (- (.. d -parent -px) (/ board-size 2)) "," (- (.. d -parent -py) (/ board-size 2)) ")")))})))
-                                                 links (.. svg
-                                                           (selectAll ".link") 
-                                                           (data (.. tree (links nodes))  
-                                                                 (fn [d] (str (.. d -source -id) "-" (.. d -target -id)))))]
-                                             (.. links
-                                                 enter
-                                                 (insert "path" ".node-group")
-                                                 (attr (clj->js {:class "link"
-                                                                 :fill "none"
-                                                                 :stroke "#666666"
-                                                                 :stroke-width 2})))
-                                             (.. node-group
-                                                 (each (fn [segment i]
-                                                         (this-as this
-                                                                  (let [cell (.. js/d3
+                                         (depth-first-search owner)
+                                         (.log js/console "ok?")
+                                         (let [root (aget visited-nodes 0)
+                                               svg (om/get-state owner :svg)
+                                               board-size (om/get-state owner :board-size)
+                                               cell-size (om/get-state owner :cell-size)
+                                               width (om/get-state owner :width)
+                                               grid-color (om/get-state owner :grid-color)
+                                               root (aget visited-nodes 0)
+                                               node (.. svg 
+                                                        (selectAll "g.node-group")
+                                                        (data (.. tree (nodes root)) 
+                                                              (fn [d]
+                                                                (let [curr-id (om/get-state owner :id)]
+                                                                  (if (.-id d)
+                                                                    (.-id d) 
+                                                                    (do (set! (.-id d) curr-id)
+                                                                        (om/set-state! owner :id (inc curr-id))
+                                                                        (.-id d)))))))
+                                               node-group (.. node
+                                                              enter
+                                                              (append "g")
+                                                              (attr (clj->js {:class "node-group"
+                                                                              :transform (fn [d]
+                                                                                           (if (= "null" (.-parent d))
+                                                                                             (str "translate(" (- (/ width 2) (/ board-size 2)) "," (- 0 (/ board-size 2)) ")")
+                                                                                             (str "translate(" (- (.. d -parent -px) (/ board-size 2)) "," (- (.. d -parent -py) (/ board-size 2)) ")")))})))
+                                               links (.. svg
+                                                         (selectAll ".link") 
+                                                         (data (.. tree (links visited-nodes))  
+                                                               (fn [d] (str (.. d -source -id) "-" (.. d -target -id)))))]
+                                           (.. links
+                                               enter
+                                               (insert "path" ".node-group")
+                                               (attr (clj->js {:class "link"
+                                                               :fill "none"
+                                                               :stroke "#666666"
+                                                               :stroke-width 5
+                                                               :d (fn [d]
+                                                                    (let [o (clj->js {:x (.. d -source -px)
+                                                                                      :y (.. d -source -py)})]
+                                                                      ((om/get-state owner :diagonal) (clj->js {:source o
+                                                                                                                :target o}))))})))
+                                           (.. node-group
+                                               (each (fn [d i]
+                                                       (this-as this
+                                                                (let [cell (.. js/d3
+                                                                               (select this)
+                                                                               (selectAll "g.cell")
+                                                                               (data (.-grid d))
+                                                                               enter
+                                                                               (append "g")
+                                                                               (attr (clj->js {:class "node"
+                                                                                               :transform (fn [d] 
+                                                                                                            (let [res (str "translate(" (* col cell-size) "," (* row cell-size) ")")]
+                                                                                                              (set! row (inc row))
+                                                                                                              (when (= row 4) (set! row 0) (set! col (inc col)))
+                                                                                                              (when (= col 4) (set! col 0))
+                                                                                                              res))})))]
+                                                                  (.. cell
+                                                                      (append "rect")
+                                                                      (attr (clj->js {:width cell-size
+                                                                                      :height cell-size
+                                                                                      :x 0 :y 0
+                                                                                      :stroke grid-color
+                                                                                      :stroke-width 1
+                                                                                      :fill-opacity (fn [d] (if (= d 0) 0.85 1))
+                                                                                      :fill (fn [d] (cell-color d))})))
+                                                                  (.. cell
+                                                                      (append "svg:text")
+                                                                      (attr (clj->js {:x (fn [d]
+                                                                                           (let [n (digits d)] 
+                                                                                             (cond (= n 1) (* (+ 0.6 row) cell-size)
+                                                                                                   (= n 2) (* (+ 0.8 row) cell-size)
+                                                                                                   (= n 3) (* (+ 0.9 row) cell-size))))       
+                                                                                      :y (* (+ 0.7 col) cell-size)
+                                                                                      :fill (fn [d] (text-color d))
+                                                                                      :font-family "Clear Sans, Helvetica Neue, Arial, sans-serif"
+                                                                                      :font-weight "Bold"
+                                                                                      :font-size (/ cell-size 2)
+                                                                                      :text-anchor "end"}))
+                                                                      (text (fn [d] (if (not (= 0 d)) d))))
+                                                                  ;; (.. cell
+                                                                  ;;     exit
+                                                                  ;;     remove)
+                                                                  cell)))))
+                                           (.. node
+                                               (each (fn [d i]
+                                                       (this-as this
+                                                                (when (and (not (= "null" (.-score d))) (.-score d))
+                                                                  (let [grid (.. js/d3
                                                                                  (select this)
-                                                                                 (selectAll "g.cell")
-                                                                                 (data (.-grid segment))
-                                                                                 enter
-                                                                                 (append "g")
-                                                                                 (attr (clj->js {:class "node"
-                                                                                                 :transform (fn [d] 
-                                                                                                              (let [res (str "translate(" (* col cell-size) "," (* row cell-size) ")")]
-                                                                                                                (set! row (inc row))
-                                                                                                                (when (= row 4) (set! row 0) (set! col (inc col)))
-                                                                                                                (when (= col 4) (set! col 0))
-                                                                                                                res))})))]
-                                                                    ;; cell border
-                                                                    (.. cell
-                                                                        (append "rect")
-                                                                        (attr (clj->js {:width cell-size
-                                                                                        :height cell-size
-                                                                                        :x 0 :y 0
-                                                                                        :stroke grid-color
-                                                                                        :stroke-width 4
-                                                                                        :fill-opacity (fn [d] (if (= d 0) 0.85 1))
-                                                                                        :fill (fn [d] (cell-color d))
-                                                                                        })))
-                                                                    (.. cell
+                                                                                 (selectAll "g.grid")
+                                                                                 (data (clj->js [1])))]
+                                                                    (.. grid
+                                                                        enter
+                                                                        (append "svg:rect")
+                                                                        (attr (clj->js {:class "cover"
+                                                                                        :width board-size
+                                                                                        :height board-size
+                                                                                        ;; :fill-opacity "0.5"
+                                                                                        :x 0 :y 0})))
+                                                                    (.. grid
+                                                                        enter
                                                                         (append "svg:text")
-                                                                        (attr (clj->js {:x (fn [d]
-                                                                                             (let [n (digits d)] 
-                                                                                               (cond (= n 1) (* (+ 0.6 row) cell-size)
-                                                                                                     (= n 2) (* (+ 0.8 row) cell-size)
-                                                                                                     (= n 3) (* (+ 0.9 row) cell-size)))) 
-                                                                                        :y (* (+ 0.7 col) cell-size)
-                                                                                        :fill (fn [d] (text-color d))
+                                                                        (attr (clj->js {:x (/ board-size 2)      
+                                                                                        :y (/ board-size 2)
+                                                                                        :fill "#776e65"
                                                                                         :font-family "Clear Sans, Helvetica Neue, Arial, sans-serif"
                                                                                         :font-weight "Bold"
-                                                                                        :font-size (/ cell-size 2)
-                                                                                        :text-anchor "end"}))
-                                                                        (text (fn [d] (if (not (= 0 d)) d))))
-                                                                    cell)))))
-                                             (let [t (.. svg
-                                                         transition
-                                                         (duration timeout))]
-                                               (.. t
-                                                   (selectAll ".link")
-                                                   (attr (clj->js {:d (om/get-state owner :diagonal)})))
-                                               (.. t
-                                                   (selectAll ".node-group")
-                                                   (attr (clj->js {:transform (fn [d] 
-                                                                                (set! (.-py d) (.-y d)) 
-                                                                                (set! (.-px d) (.-x d))
-                                                                                (str "translate(" (- (.. d -x) (/ board-size 2)) "," (- (.. d -y) (/ board-size 2)) ")"))})))))))
-                                       timeout))))
+                                                                                        :font-size 20
+                                                                                        :text-anchor "middle"}))
+                                                                        (text (gstring/format "%.3f" (.-score d))))))))))
+                                           
+                                           (.. node
+                                               transition
+                                               (duration timeout)
+                                               (attr (clj->js {:transform (fn [d] 
+                                                                            (set! (.-py d) (.-y d)) 
+                                                                            (set! (.-px d) (.-x d))
+                                                                            (str "translate(" (- (.. d -x) (/ board-size 2)) "," (- (.. d -y) (/ board-size 2)) ")"))})))
+                                           (.. links
+                                               transition
+                                               (duration timeout)
+                                               (attr (clj->js {:d (om/get-state owner :diagonal)})))
+                                           (.. node
+                                               exit
+                                               transition
+                                               (duration timeout)
+                                               (attr (clj->js {:transform (fn [d]
+                                                                            (str "translate(" (- (.. d -parent -px) (/ board-size 2)) "," (- (.. d -parent -py) (/ board-size 2)) ")")
+                                                                            ;;(str "translate(" 0 "," 0 ")")
+                                                                            )})) 
+                                               remove)
+                                           (.. links
+                                               exit
+                                               transition
+                                               (duration timeout)
+                                               (attr (clj->js {:d (fn [d]
+                                                                    (let [o (clj->js {:x (.. d -source -x)
+                                                                                      :y (.. d -source -y)})]
+                                                                      ((om/get-state owner :diagonal) (clj->js {:source o
+                                                                                                                :target o}))))}))
+                                               remove)
+                                           ;; (when (= "null" next-node)
+                                           ;;   (js/clearInterval (om/get-state owner :timer))
+                                           ;;   (om/update! owner :finished true))
+                                           ))
+                                       (+ 50 timeout)))))
 
     om/IRender
     (render [this]

@@ -6,3 +6,5 @@
             [cljsjs.papaparse])
   (:require-macros
    [cljs.core.async.macros :as m :refer [go]]))
+
+(defn add1 [n] (inc n))

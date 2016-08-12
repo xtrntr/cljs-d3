@@ -26,13 +26,14 @@
 (def merge-row (memoize unmemoized-merge-row))
 
 (defn rotate-grid [grid]
-  "rotate a grid 90 degrees clockwise" 
-  (when grid
+  "rotate a grid 90 degrees clockwise"
+  (if grid
     (into [] (for [idx (list 12 8 4 0 
                              13 9 5 1 
                              14 10 6 2 
                              15 11 7 3)]
-               (nth grid idx)))))
+               (nth grid idx)))
+    false))
 
 ;; for other directions, rotate then apply move-left and rotate back
 ;; if not a valid, return false
@@ -48,7 +49,9 @@
       false
       res)))
 
-(def move-left (memoize unmemoized-move-left)) 
+(def move-left 
+  ;; takes a grid returns a grid
+  (memoize unmemoized-move-left)) 
 
 (defn move-down [grid]
   (-> grid
@@ -127,4 +130,46 @@
     (when new-grid
       (om/update! app [:grid-values] new-grid)
       (add-new-tile app))))
+
+(defn generate-moves [grid]
+  ;; takes a grid as arg and returns a vector of valid moves
+  (filterv #(not (false? %)) [(move-left grid)
+                              (move-right grid)
+                              (move-up grid)
+                              (move-down grid)]))
  
+(defn generate-spawns [grid]
+  ;; takes a grid as arg and returns a vector of possible spawns
+  (let [indexes (find-zero-indexes grid)]
+    (reduce into (for [idx indexes]
+                   [(assoc grid idx 2)
+                    (assoc grid idx 4)]))))
+
+(def geom-seq
+  (for [idx (range 16)]
+    (/ 1 (.pow js/Math 2 idx))))
+
+(defn sumlist [list]
+  (reduce + list))
+
+(def monotonicity 
+  "state is vector of 16 values
+  zip multiply the vector with a geometric sequence"
+  (memoize 
+   (fn [grid] 
+     (let [configs (list grid
+                         (reverse grid)
+                         (rotate-grid grid)
+                         (reverse (rotate-grid grid)))]
+       (apply max 
+              (map 
+               (fn [grid] (sumlist (map * geom-seq grid)))
+               configs))))))
+
+(defn weight-zero-tiles [grid]
+  "bonus for more empty tiles"
+  (* (/ 1 16) (count (inc (find-zero-indexes grid)))))
+
+(defn score-grid [grid]
+  "2 heuristics used : number of empty spaces, monotonicity of the board."
+  (monotonicity grid))
